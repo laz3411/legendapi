@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>우리 학교 급식 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #fafafa; }
+    .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    input { padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+    .chat-input { display: flex; gap: 8px; margin-top: 10px; }
+    .chat-input input { flex: 1; }
+    button { padding: 8px 14px; border: 1px solid #ddd; border-radius: 16px; background: #f3f4f6; cursor: pointer; }
+    #quick button { margin: 4px 4px 0 0; }
+    #answer { margin-top: 12px; white-space: pre-wrap; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <p><a href="index.html">← 홈으로</a></p>
+  <h1>🍚 대현고 11월 급식 대시보드</h1>
+  <p>나이스 교육정보 개방 포털의 급식식단정보를 분석했습니다.</p>
+
+  <div class="card">
+    <h2>날짜별 칼로리</h2>
+    <canvas id="kcalChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>많이 나온 메뉴 TOP 10</h2>
+    <canvas id="menuChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>🤖 AI에게 물어보기</h2>
+    <div id="quick"></div>
+    <div class="chat-input">
+      <input id="question" placeholder="급식 데이터에 대해 궁금한 점을 물어보세요">
+      <button id="askBtn">질문</button>
+    </div>
+    <div id="answer"></div>
+  </div>
+
+  <div class="card">
+    <h2>📝 나의 분석 한 줄</h2>
+    <p>여기에 그래프를 보고 알게 된 점을 써보세요.</p>
+  </div>
+
+  <script>
+    const MODE = "meal";   // AI에게 어떤 데이터인지 알려주는 이름
+    let summary = {};      // AI에게 보낼 요약 데이터
+
+    // ---------- 1. 데이터 불러와서 그래프 그리기 ----------
+    fetch("meal.json")
+      .then(res => res.json())
+      .then(data => {
+        // 날짜별 칼로리 꺾은선 그래프
+        new Chart(document.getElementById("kcalChart"), {
+          type: "line",
+          data: {
+            labels: data.meals.map(m => m.date + "(" + m.weekday + ")"),
+            datasets: [{ label: "칼로리(kcal)", data: data.meals.map(m => m.kcal) }]
+          }
+        });
+
+        // 메뉴 TOP 10 가로 막대 그래프
+        new Chart(document.getElementById("menuChart"), {
+          type: "bar",
+          data: {
+            labels: data.top_menus.map(m => m[0]),
+            datasets: [{ label: "나온 횟수", data: data.top_menus.map(m => m[1]) }]
+          },
+          options: { indexAxis: "y" }
+        });
+
+        summary = {
+          top_menus: data.top_menus,
+          weekday_avg: data.weekday_avg,
+          meals: data.meals.map(m => ({ date: m.date, weekday: m.weekday, kcal: m.kcal, menus: m.menus }))
+        };
+      });
+
+    // ---------- 2. AI 챗봇 (Vercel에서만 작동) ----------
+    async function ask(question) {
+      const box = document.getElementById("answer");
+      box.textContent = "🤖 생각 중...";
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: MODE, question: question, data: summary })
+        });
+        const result = await res.json();
+        box.textContent = result.answer || ("⚠️ " + (result.error || JSON.stringify(result)));
+      } catch (e) {
+        box.textContent = "⚠️ 연결 실패: Vercel 주소(.vercel.app)에서 열었는지 확인하세요. (" + e.message + ")";
+      }
+    }
+
+    ["칼로리가 가장 높은 요일은?", "자주 나온 메뉴로 알 수 있는 점은?", "이번 달 급식을 한 줄로 요약해줘"]
+      .forEach(q => {
+        const b = document.createElement("button");
+        b.textContent = q;
+        b.onclick = () => ask(q);
+        document.getElementById("quick").appendChild(b);
+      });
+
+    document.getElementById("askBtn").onclick = () => {
+      const q = document.getElementById("question").value.trim();
+      if (q) ask(q);
+    };
+    document.getElementById("question").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("askBtn").click();
+    });
+  </script>
+</body>
+</html>

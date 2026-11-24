@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>나의 공공데이터 웹사이트</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f6f7fb; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+    a.card { display: block; background: white; border-radius: 14px; padding: 24px; text-decoration: none; color: #222;
+             box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: transform 0.15s; }
+    a.card:hover { transform: translateY(-4px); }
+    .emoji { font-size: 40px; }
+    .card p { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>📊 나의 공공데이터 웹사이트</h1>
+  <p>공공 API로 가져온 데이터를 분석하고 시각화했습니다. 만든 사람: <b>○○○</b></p>
+
+  <div class="grid">
+    <a class="card" href="meal.html">
+      <div class="emoji">🍚</div>
+      <h2>급식 대시보드</h2>
+      <p>나이스 교육정보 개방 포털 · 우리 학교 급식 분석</p>
+    </a>
+    <a class="card" href="drug.html">
+      <div class="emoji">💊</div>
+      <h2>일반의약품 대시보드</h2>
+      <p>공공데이터포털 e약은요 · 증상별 약 분석 + AI</p>
+    </a>
+    <a class="card" href="my.html">
+      <div class="emoji">⭐</div>
+      <h2>나만의 데이터</h2>
+      <p>내가 고른 API로 만든 페이지</p>
+    </a>
+  </div>
+</body>
+</html>

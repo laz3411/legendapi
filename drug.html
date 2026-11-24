@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>증상별 일반의약품 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f8f7; }
+    .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .row .card { flex: 1; min-width: 280px; }
+    input[type="text"] { padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+    #search { width: 100%; }
+    .drug { border-bottom: 1px solid #eee; padding: 12px 0; overflow: hidden; }
+    .drug img { width: 120px; float: right; margin-left: 10px; }
+    .drug h3 { margin: 0 0 4px; }
+    .company { color: #888; font-size: 14px; margin: 0; }
+    .notice { font-size: 13px; color: #b45309; }
+    .chat-input { display: flex; gap: 8px; margin-top: 10px; }
+    .chat-input input { flex: 1; }
+    button { padding: 8px 14px; border: 1px solid #ddd; border-radius: 16px; background: #f3f4f6; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    #quick button { margin: 4px 4px 0 0; }
+    #answer { margin-top: 12px; white-space: pre-wrap; line-height: 1.6; }
+    #preview { max-width: 260px; max-height: 260px; display: none; margin-top: 12px; border-radius: 8px; }
+    .ai-box { background: #f0f7ff; border-radius: 8px; padding: 12px; margin-top: 12px; white-space: pre-wrap; line-height: 1.6; }
+    .ai-box:empty { display: none; }
+  </style>
+</head>
+<body>
+  <p><a href="index.html">← 홈으로</a></p>
+  <h1>💊 증상별 일반의약품 대시보드</h1>
+  <p>식품의약품안전처 의약품개요정보(e약은요)를 분석했습니다.</p>
+  <p class="notice">※ 학습용 자료입니다. 약을 복용할 때는 약사·의사와 상담하세요.</p>
+
+  <div class="card">
+    <h2>증상별 일반의약품 수</h2>
+    <canvas id="symptomChart"></canvas>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2><span class="target"></span> 약 제약회사 TOP 10</h2>
+      <canvas id="companyChart"></canvas>
+    </div>
+    <div class="card">
+      <h2><span class="target"></span> 약 중 졸음 주의</h2>
+      <canvas id="drowsyChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔍 <span class="target"></span> 약 검색</h2>
+    <input type="text" id="search" placeholder="약 이름을 입력하세요">
+    <div id="cards"></div>
+  </div>
+
+  <!-- 📷 사진으로 약 찾기 (Vercel에서만 작동) -->
+  <div class="card">
+    <h2>📷 사진으로 약 찾아보기</h2>
+    <p class="notice">※ 약 상자·포장 사진을 올려주세요. 결과는 학습용 추측이며, 복용 판단은 약사와 상담하세요. 사진은 저장되지 않아요.</p>
+    <input type="file" id="photo" accept="image/*">
+    <button id="photoBtn">분석하기</button>
+    <br>
+    <img id="preview" alt="미리보기">
+    <div id="photoStatus" style="margin-top:10px;"></div>
+    <div id="photoAnalysis" class="ai-box"></div>
+    <div id="photoGuess" class="ai-box"></div>
+    <div id="photoCards"></div>
+  </div>
+
+  <!-- 🤖 AI 챗봇 (Vercel에서만 작동) -->
+  <div class="card">
+    <h2>🤖 AI에게 물어보기</h2>
+    <div id="quick"></div>
+    <div class="chat-input">
+      <input type="text" id="question" placeholder="데이터에 대해 궁금한 점을 물어보세요">
+      <button id="askBtn">질문</button>
+    </div>
+    <div id="answer"></div>
+  </div>
+
+  <div class="card">
+    <h2>📝 나의 분석 한 줄</h2>
+    <p>여기에 그래프를 보고 알게 된 점을 써보세요.</p>
+  </div>
+
+  <script>
+    const MODE = "drug";
+    let summary = {};   // AI 챗봇에게 보낼 요약 데이터
+
+    // 약 카드 1개 HTML 만들기 (검색·사진 결과에 같이 사용)
+    function drugCard(d) {
+      const img = d.image ? `<img src="${d.image}" onerror="this.remove()">` : "";
+      return `
+        <div class="drug">
+          ${img}
+          <h3>${d.name}</h3>
+          <p class="company">${d.company}</p>
+          <p><b>효능</b> ${d.effect}</p>
+          <p><b>사용법</b> ${d.use}</p>
+        </div>`;
+    }
+
+    // ---------- 1. 데이터 불러와서 그래프 그리기 ----------
+    fetch("drug.json")
+      .then(res => res.json())
+      .then(data => {
+        document.querySelectorAll(".target").forEach(el => el.textContent = data.target);
+
+        new Chart(document.getElementById("symptomChart"), {
+          type: "bar",
+          data: {
+            labels: Object.keys(data.symptom_count),
+            datasets: [{ label: "약 개수", data: Object.values(data.symptom_count) }]
+          }
+        });
+
+        new Chart(document.getElementById("companyChart"), {
+          type: "bar",
+          data: {
+            labels: data.top_companies.map(c => c[0]),
+            datasets: [{ label: "제품 수", data: data.top_companies.map(c => c[1]) }]
+          },
+          options: { indexAxis: "y" }
+        });
+
+        new Chart(document.getElementById("drowsyChart"), {
+          type: "doughnut",
+          data: {
+            labels: Object.keys(data.drowsy),
+            datasets: [{ data: Object.values(data.drowsy) }]
+          }
+        });
+
+        function showCards(list) {
+          document.getElementById("cards").innerHTML = list.map(drugCard).join("");
+        }
+        showCards(data.drugs.slice(0, 10));
+
+        document.getElementById("search").addEventListener("input", e => {
+          const word = e.target.value.trim();
+          showCards(data.drugs.filter(d => d.name.includes(word)).slice(0, 10));
+        });
+
+        summary = {
+          target: data.target,
+          symptom_count: data.symptom_count,
+          top_companies: data.top_companies,
+          drowsy: data.drowsy,
+          drugs: data.drugs.slice(0, 30).map(d => ({ name: d.name, effect: d.effect.slice(0, 80) }))
+        };
+      });
+
+    // ---------- 2. 사진으로 약 찾기 ----------
+    // 사진을 최대 1024px로 줄여서 JPEG로 바꾸기 (업로드 용량 줄이기)
+    function resizeImage(file, maxSize = 1024) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        img.onerror = () => reject(new Error("사진을 열 수 없어요."));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    document.getElementById("photo").addEventListener("change", e => {
+      const file = e.target.files[0];
+      const preview = document.getElementById("preview");
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = "block";
+      }
+    });
+
+    document.getElementById("photoBtn").onclick = async () => {
+      const file = document.getElementById("photo").files[0];
+      const status = document.getElementById("photoStatus");
+      const analysisBox = document.getElementById("photoAnalysis");
+      const guessBox = document.getElementById("photoGuess");
+      const cardsBox = document.getElementById("photoCards");
+      const btn = document.getElementById("photoBtn");
+
+      if (!file) { status.textContent = "먼저 사진을 골라주세요."; return; }
+
+      analysisBox.textContent = "";
+      guessBox.textContent = "";
+      cardsBox.innerHTML = "";
+      status.textContent = "📷 사진 분석 중... (10~20초 걸릴 수 있어요)";
+      btn.disabled = true;
+
+      try {
+        const dataUrl = await resizeImage(file);
+        const res = await fetch("/api/vision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl.split(",")[1], mediaType: "image/jpeg" })
+        });
+        const result = await res.json();
+
+        if (result.error) {
+          status.textContent = "⚠️ " + result.error;
+          return;
+        }
+
+        const a = result.analysis || {};
+        status.textContent = `✅ 분석 완료 · 찾은 약 ${result.drugs.length}개`;
+        analysisBox.textContent =
+          "🔎 AI가 읽은 내용\n" +
+          "· 제품명: " + (a.product_name || "읽지 못함") + "\n" +
+          "· 보이는 글자: " + (a.visible_text || "-") + "\n" +
+          "· 특징: " + (a.description || "-");
+        guessBox.textContent = "🤖 AI 추측\n" + result.guess;
+        cardsBox.innerHTML = result.drugs.length
+          ? "<h3>📋 e약은요에서 찾은 약</h3>" + result.drugs.map(drugCard).join("")
+          : "<p>e약은요에서 일치하는 약을 찾지 못했어요.</p>";
+      } catch (e) {
+        status.textContent = "⚠️ 연결 실패: Vercel 주소(.vercel.app)에서 열었는지 확인하세요. (" + e.message + ")";
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    // ---------- 3. AI 챗봇 ----------
+    async function ask(question) {
+      const box = document.getElementById("answer");
+      box.textContent = "🤖 생각 중...";
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: MODE, question: question, data: summary })
+        });
+        const result = await res.json();
+        box.textContent = result.answer || ("⚠️ " + (result.error || JSON.stringify(result)));
+      } catch (e) {
+        box.textContent = "⚠️ 연결 실패: Vercel 주소(.vercel.app)에서 열었는지 확인하세요. (" + e.message + ")";
+      }
+    }
+
+    ["어떤 증상의 약이 가장 많아?", "졸음 주의 약은 얼마나 돼?", "제약회사 순위를 설명해줘"]
+      .forEach(q => {
+        const b = document.createElement("button");
+        b.textContent = q;
+        b.onclick = () => ask(q);
+        document.getElementById("quick").appendChild(b);
+      });
+
+    document.getElementById("askBtn").onclick = () => {
+      const q = document.getElementById("question").value.trim();
+      if (q) ask(q);
+    };
+    document.getElementById("question").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("askBtn").click();
+    });
+  </script>
+</body>
+</html>
